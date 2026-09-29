@@ -1,0 +1,2240 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>線上座位編修系統 - 五年十三班</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts Inter & Noto Sans TC -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Noto Sans TC', 'Inter', sans-serif;
+      background-color: #f8fafc;
+    }
+    .seat-card {
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      user-select: none;
+    }
+    .seat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+    .seat-card.dragging {
+      opacity: 0.4;
+      transform: scale(0.96);
+    }
+    .seat-card.swap-source {
+      outline: 3px solid #3b82f6;
+      animation: pulse-ring 1.5s infinite;
+    }
+    @keyframes pulse-ring {
+      0%, 100% { outline-color: #3b82f6; }
+      50% { outline-color: #93c5fd; }
+    }
+    .drop-hover {
+      background-color: #e0f2fe !important;
+      border-color: #0284c7 !important;
+      transform: scale(1.02);
+    }
+    /* 觸控設備平滑捲動優化 */
+    .touch-scroll {
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+    }
+    /* 列印專用樣式 */
+    @media print {
+      body { background: white; }
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+      .canvas-container { border: none !important; box-shadow: none !important; width: 100% !important; }
+      .seat-card { break-inside: avoid; border: 1px solid #94a3b8 !important; box-shadow: none !important; }
+    }
+  </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col justify-between">
+
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-h-16 py-2.5 sm:py-0 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex-shrink-0 flex items-center justify-center shadow-md shadow-indigo-100">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h1 class="text-base sm:text-lg font-bold text-slate-900" id="classTitleDisplay">五年十三班座位表</h1>
+            <button onclick="editClassTitle()" class="text-slate-400 hover:text-slate-600 transition" title="修改班級名稱">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+            </button>
+            <!-- 版本控制編號徽章 -->
+            <span id="appVersionBadge" class="text-[10px] sm:text-[11px] font-semibold tracking-wide bg-indigo-50 text-indigo-600 border border-indigo-200/80 px-2 py-0.5 rounded-full select-none" title="版本號碼：後續每次更新累加">v1.0.4</span>
+          </div>
+          <p class="text-xs text-slate-500 font-medium">線上座位編修系統</p>
+        </div>
+      </div>
+
+      <!-- Quick Action Buttons (自適應折行排版) -->
+      <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <!-- 全螢幕切換功能鍵 (純圖示，Hover 具備完整提示) -->
+        <div class="relative group">
+          <button onclick="toggleFullscreen()" class="p-2 sm:px-2.5 sm:py-1.5 rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 hover:text-indigo-600 flex items-center justify-center transition shadow-sm focus:outline-none" aria-label="全螢幕檢視模式" title="全螢幕檢視模式 (可再次點選或按 Esc 退出)">
+            <svg id="fullscreenIcon" class="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+            </svg>
+          </button>
+          <div class="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 hidden group-hover:flex flex-col items-center z-50 pointer-events-none transition duration-150">
+            <div class="w-2 h-2 bg-slate-800 rotate-45 -mb-1"></div>
+            <span class="bg-slate-800 text-white text-[11px] font-medium py-1 px-2.5 rounded-md shadow-lg whitespace-nowrap">全螢幕檢視模式 (切換 / Esc退出)</span>
+          </div>
+        </div>
+
+        <!-- 系統操作指引功能鍵 (純圖示，Hover 具備完整提示) -->
+        <div class="relative group">
+          <button onclick="openGuideModal()" class="p-2 sm:px-2.5 sm:py-1.5 rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 hover:text-indigo-600 flex items-center justify-center transition shadow-sm focus:outline-none" aria-label="系統操作指引與排位技巧" title="系統操作指引與使用技巧">
+            <svg class="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </button>
+          <div class="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 hidden group-hover:flex flex-col items-center z-50 pointer-events-none transition duration-150">
+            <div class="w-2 h-2 bg-slate-800 rotate-45 -mb-1"></div>
+            <span class="bg-slate-800 text-white text-[11px] font-medium py-1 px-2.5 rounded-md shadow-lg whitespace-nowrap">系統操作指引與排位技巧說明</span>
+          </div>
+        </div>
+
+        <button onclick="window.print()" class="px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 flex items-center gap-1.5 transition shadow-sm">
+          <svg class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+          <span>列印</span>
+        </button>
+
+        <!-- 匯出/匯入選單 -->
+        <div class="relative">
+          <button onclick="toggleExportMenu()" class="px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5 shadow-sm transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            <span>匯出 / 備份</span>
+          </button>
+          <div id="exportMenu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs sm:text-sm">
+            <button onclick="openBatchModal('export')" class="w-full text-left px-4 py-2 hover:bg-slate-100 flex items-center gap-2 text-indigo-700 font-medium">
+              <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+              名冊批次中心 (匯出/匯入)
+            </button>
+            <hr class="my-1 border-slate-100">
+            <button onclick="exportRosterCSV()" class="w-full text-left px-4 py-2 hover:bg-slate-100 flex items-center gap-2 text-slate-700">
+              <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              匯出純學生名冊 CSV
+            </button>
+            <button onclick="exportCSV()" class="w-full text-left px-4 py-2 hover:bg-slate-100 flex items-center gap-2 text-slate-700">
+              <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              匯出座次表 CSV
+            </button>
+            <button onclick="exportJSON()" class="w-full text-left px-4 py-2 hover:bg-slate-100 flex items-center gap-2 text-slate-700">
+              <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293h3.172a1 1 0 00.707-.293l2.414-2.414a1 1 0 01.707-.293H20"/></svg>
+              備份班級資料 (JSON)
+            </button>
+            <hr class="my-1 border-slate-100">
+            <label class="w-full text-left px-4 py-2 hover:bg-slate-100 flex items-center gap-2 text-slate-700 cursor-pointer">
+              <svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              還原班級資料 (JSON)
+              <input type="file" id="importFileInput" accept=".json" class="hidden" onchange="importJSON(event)">
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4 flex-1 flex flex-col gap-3 sm:gap-3.5 w-full">
+    
+    <!-- 整合型一體化緊湊控制中心 (大幅縮減垂直空間以擴大可視排座區域) -->
+    <section class="bg-white rounded-2xl p-2.5 sm:p-3 shadow-xs border border-slate-200/80 flex flex-col gap-2.5 no-print">
+      
+      <!-- 第一層：格局配置選擇 ＋ 男女性別微調與總數統計 (橫向滿版並置) -->
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <!-- 座位格局緊緻切換器 -->
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span class="text-xs font-bold text-slate-500 mr-0.5 whitespace-nowrap">格局：</span>
+          <div class="inline-flex p-0.5 bg-slate-100 rounded-lg flex-wrap gap-0.5">
+            <button id="btnLayoutPairs" onclick="switchLayout('pairs')" class="layout-tab-btn px-2.5 py-1 text-xs font-semibold rounded-md transition bg-white text-indigo-700 shadow-2xs">
+              ① 雙人學伴
+            </button>
+            <button id="btnLayoutGroups" onclick="switchLayout('groups')" class="layout-tab-btn px-2.5 py-1 text-xs font-medium rounded-md text-slate-600 hover:text-slate-900 transition">
+              ② 小組島狀
+            </button>
+            <button id="btnLayoutHorseshoe" onclick="switchLayout('horseshoe')" class="layout-tab-btn px-2.5 py-1 text-xs font-medium rounded-md text-slate-600 hover:text-slate-900 transition">
+              ③ 馬蹄U型環繞
+            </button>
+            <button id="btnLayoutArc" onclick="switchLayout('arc')" class="layout-tab-btn px-2.5 py-1 text-xs font-medium rounded-md text-slate-600 hover:text-slate-900 transition">
+              ④ 雙排弧形劇場
+            </button>
+          </div>
+        </div>
+
+        <!-- 男女人數調節與狀態徽章 (緊湊整合) -->
+        <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          <!-- 男生計數器 -->
+          <div class="flex items-center gap-1 bg-blue-50/90 border border-blue-200/80 px-2 py-0.5 rounded-lg text-xs shadow-2xs">
+            <span class="font-bold text-blue-800">👦男</span>
+            <button onclick="adjustGenderCount('M', -1)" class="w-5 h-5 rounded bg-white hover:bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-700 font-bold leading-none transition">-</button>
+            <input type="number" id="boyCountInput" min="0" max="50" value="9" class="w-8 text-center text-xs font-bold text-blue-900 bg-white rounded border border-blue-200 focus:outline-none py-0.5" onchange="updateGenderCountManual('M', this.value)">
+            <button onclick="adjustGenderCount('M', 1)" class="w-5 h-5 rounded bg-white hover:bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-700 font-bold leading-none transition">+</button>
+          </div>
+
+          <!-- 女生計數器 -->
+          <div class="flex items-center gap-1 bg-rose-50/90 border border-rose-200/80 px-2 py-0.5 rounded-lg text-xs shadow-2xs">
+            <span class="font-bold text-rose-800">👧女</span>
+            <button onclick="adjustGenderCount('F', -1)" class="w-5 h-5 rounded bg-white hover:bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-700 font-bold leading-none transition">-</button>
+            <input type="number" id="girlCountInput" min="0" max="50" value="12" class="w-8 text-center text-xs font-bold text-rose-900 bg-white rounded border border-rose-200 focus:outline-none py-0.5" onchange="updateGenderCountManual('F', this.value)">
+            <button onclick="adjustGenderCount('F', 1)" class="w-5 h-5 rounded bg-white hover:bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-700 font-bold leading-none transition">+</button>
+          </div>
+
+          <!-- 人數與排位狀態徽章 -->
+          <span class="px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-xs font-bold whitespace-nowrap shadow-2xs">
+            🎓 <strong id="totalClassCountDisplay">21</strong> 人
+          </span>
+          <span class="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/70 text-xs font-semibold whitespace-nowrap">
+            已排 <strong id="assignedCount">0</strong>/<span id="totalSeatsCount">24</span>
+          </span>
+          <span id="lockedEmptyBadge" class="hidden px-2 py-0.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200/70 text-xs font-semibold whitespace-nowrap">
+            🔒 鎖定空席 <strong id="lockedEmptyCount">0</strong>
+          </span>
+        </div>
+      </div>
+
+      <!-- 極細內部分隔線 -->
+      <div class="h-px bg-slate-100 w-full"></div>
+
+      <!-- 第二層：排位功能操作鍵 ＋ 名冊批次中心 (水平緊密排列) -->
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <!-- 智慧排座複合按鈕 -->
+          <div class="inline-flex rounded-lg shadow-2xs">
+            <button onclick="autoAssignSeats('random')" class="px-2.5 py-1 text-xs font-semibold rounded-l-lg bg-slate-900 text-white hover:bg-slate-800 flex items-center gap-1 transition">
+              <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              <span>隨機抽籤</span>
+            </button>
+            <button onclick="autoAssignSeats('gender')" class="px-2 py-1 text-xs font-medium border-l border-slate-700 bg-slate-900 text-white hover:bg-slate-800 transition" title="男女交替分散">
+              男女交錯
+            </button>
+            <button onclick="autoAssignSeats('order')" class="px-2 py-1 text-xs font-medium rounded-r-lg border-l border-slate-700 bg-slate-900 text-white hover:bg-slate-800 transition" title="按座號順序">
+              按座號
+            </button>
+          </div>
+
+          <button onclick="clearAllSeats()" class="px-2.5 py-1 text-xs font-medium rounded-lg border border-red-200 text-red-600 bg-red-50/70 hover:bg-red-100 flex items-center gap-1 transition" title="清除非鎖定座位的排定學生">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            <span>清空座位</span>
+          </button>
+
+          <button onclick="toggleSwapMode()" id="swapModeBtn" class="px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 flex items-center gap-1.5 transition">
+            <span class="w-2 h-2 rounded-full bg-slate-400" id="swapIndicator"></span>
+            <span>兩位互換模式</span>
+          </button>
+        </div>
+
+        <!-- 名冊抽屜與批次中心 -->
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <button onclick="openBatchModal('import')" class="px-2.5 py-1 text-xs font-semibold rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100 flex items-center gap-1 transition shadow-2xs">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+            <span>批次名冊</span>
+          </button>
+          <button onclick="openRosterDrawer()" class="px-2.5 py-1 text-xs font-medium rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center gap-1 transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            <span>學生名冊池 (<strong id="unseatedCountBadge" class="font-bold">0</strong>)</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <div class="relative flex-1 bg-white rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200 flex flex-col items-center min-h-[520px] canvas-container">
+      
+      <!-- Print Header (Only visible when printed) -->
+      <div class="hidden print-only w-full text-center pb-4 mb-4 border-b border-slate-300">
+        <h1 class="text-2xl font-bold text-slate-900" id="printClassTitle">五年十三班 座位表</h1>
+        <p class="text-sm text-slate-600 mt-1" id="printDate"></p>
+      </div>
+
+      <!-- Blackboard Area (黑板區) -->
+      <div id="podiumArea" class="w-full max-w-2xl mb-4 flex flex-col items-center">
+        <div class="w-full bg-slate-800 text-slate-100 rounded-xl py-1.5 px-6 flex items-center justify-center shadow-inner border-2 border-amber-900/60">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-xs sm:text-sm font-bold tracking-widest text-emerald-200">黑　板　區</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Layout Explanatory Subheader -->
+      <div class="w-full text-center mb-3 no-print">
+        <span id="currentLayoutDescription" class="inline-block text-[11px] sm:text-xs font-medium text-slate-500 bg-slate-100 px-3 py-0.5 rounded-full">
+          雙人學伴：3大縱隊共12組學伴桌（共24席），強調夥伴互助討論，既保有矩陣秩序又兼顧同儕共學。
+        </span>
+      </div>
+
+      <!-- Dynamic Classroom Seating Grid Area -->
+      <div id="seatingGridContainer" class="w-full flex-1 flex items-center justify-center overflow-x-auto touch-scroll pb-4">
+        <!-- Injected via JavaScript based on chosen layout -->
+      </div>
+    </div>
+  </main>
+
+  <!-- 網頁最下方置中頁尾 -->
+  <footer class="w-full py-4 text-center text-xs text-slate-500 no-print border-t border-slate-200/70 bg-white/70 backdrop-blur-xs mt-auto">
+    <p class="tracking-wider font-medium text-slate-600">班級百寶箱 | Design：S.C. Kuo</p>
+  </footer>
+
+  <div id="rosterDrawerBackdrop" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 hidden transition-opacity" onclick="closeRosterDrawer()"></div>
+  <aside id="rosterDrawer" class="fixed top-0 right-0 bottom-0 w-full sm:w-96 bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col no-print">
+    <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+      <div class="flex items-center gap-2">
+        <h2 class="font-bold text-slate-800">班級學生名冊</h2>
+        <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium" id="rosterTotalBadge">0人</span>
+      </div>
+      <button onclick="closeRosterDrawer()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <!-- Quick filter or add student -->
+    <div class="p-3 border-b border-slate-100 flex items-center gap-2">
+      <input type="text" id="newStudentNameInput" placeholder="輸入姓名新增學生..." class="flex-1 px-3 py-1.5 text-xs sm:text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+      <select id="newStudentGender" class="px-2 py-1.5 text-xs sm:text-sm border border-slate-300 rounded-lg">
+        <option value="M">男</option>
+        <option value="F">女</option>
+      </select>
+      <button onclick="addNewStudentFromDrawer()" class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-indigo-700">新增</button>
+    </div>
+
+    <!-- Student Cards List -->
+    <div class="flex-1 overflow-y-auto p-4 space-y-2" id="rosterListContainer">
+      <!-- Injected by JS -->
+    </div>
+
+    <!-- Drawer Footer -->
+    <div class="p-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 text-center flex items-center justify-between">
+      <span>💡 提示：可拖曳名單學生至空位入座</span>
+      <button onclick="closeRosterDrawer(); openBatchModal('import')" class="text-indigo-600 font-semibold hover:underline">
+        批次管理 ⚙️
+      </button>
+    </div>
+  </aside>
+
+  <!-- 學生名冊批次管理中心 (匯入 / 匯出) Modal -->
+  <div id="batchModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[92vh]">
+      <!-- Header with Tabs -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          </div>
+          <div>
+            <h3 class="text-base sm:text-lg font-bold text-slate-900">學生名冊批次管理中心</h3>
+            <p class="text-[11px] text-slate-500">支援 CSV、TXT 格式與 Excel 複製貼上</p>
+          </div>
+        </div>
+        <button onclick="closeBatchModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Tab Buttons -->
+      <div class="flex items-center gap-2 mt-3 p-1 bg-slate-100 rounded-xl">
+        <button id="tabBtnImport" onclick="switchBatchTab('import')" class="flex-1 py-1.5 text-xs sm:text-sm font-semibold rounded-lg bg-white text-indigo-700 shadow-xs transition flex items-center justify-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          批次匯入名冊
+        </button>
+        <button id="tabBtnExport" onclick="switchBatchTab('export')" class="flex-1 py-1.5 text-xs sm:text-sm font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center justify-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          批次匯出名冊
+        </button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="mt-4 flex-1 overflow-y-auto">
+        
+        <!-- === 匯入分頁 === -->
+        <div id="tabContentImport" class="space-y-3">
+          <!-- 上方快捷列：上傳檔案與下載範本 -->
+          <div class="flex flex-wrap items-center justify-between gap-2 p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 text-xs">
+            <div class="flex items-center gap-2">
+              <label class="px-3 py-1.5 bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-medium rounded-lg cursor-pointer flex items-center gap-1 shadow-2xs transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                上傳名冊檔案 (.csv / .txt)
+                <input type="file" id="rosterImportFileInput" accept=".csv,.txt" class="hidden" onchange="handleRosterFileUpload(event)">
+              </label>
+              <button onclick="downloadRosterTemplate()" class="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium rounded-lg flex items-center gap-1 shadow-2xs transition">
+                <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                下載 CSV 範本
+              </button>
+            </div>
+            <button onclick="populateCurrentStudentsToImportText()" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold underline">
+              帶入目前全班名冊
+            </button>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-semibold text-slate-700">學生名單清單文字：</label>
+              <span class="text-[11px] text-slate-400">支援每行一位，格式：座號 姓名 性別 備註</span>
+            </div>
+            <textarea id="batchInputText" rows="8" class="w-full font-mono text-xs sm:text-sm p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="1 王小明 男
+2 陳美玲 女
+3 張宇豪 男 近視需前排
+...或直接由 Excel / CSV 複製貼上"></textarea>
+          </div>
+
+          <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 text-[11px] text-slate-500 leading-relaxed">
+            💡 <strong>貼心解析</strong>：欄位間可使用<strong>逗號、Tab(從 Excel 複製) 或空格</strong>分隔；性別可寫「男 / 女」或「M / F」。若省略座號，系統將依照行數自動排序座號。
+          </div>
+        </div>
+
+        <!-- === 匯出分頁 === -->
+        <div id="tabContentExport" class="space-y-4 hidden">
+          <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+            <h4 class="text-xs font-bold text-slate-800 mb-1">匯出選項</h4>
+            <p class="text-[11px] text-slate-500 mb-3">您可以選擇下載相容 Excel 的 UTF-8 CSV 試算表、純文字名單，或直接一鍵複製文字至剪貼簿。</p>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button onclick="exportRosterCSV()" class="p-2.5 bg-white border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 rounded-xl flex flex-col items-center justify-center text-center transition group shadow-2xs">
+                <span class="text-xl mb-1 group-hover:scale-110 transition-transform">📊</span>
+                <span class="text-xs font-bold text-slate-800">下載名冊 CSV</span>
+                <span class="text-[10px] text-slate-400">Excel / Google 試算表相容</span>
+              </button>
+
+              <button onclick="exportRosterTXT()" class="p-2.5 bg-white border border-slate-200 hover:border-blue-500 hover:bg-blue-50/40 rounded-xl flex flex-col items-center justify-center text-center transition group shadow-2xs">
+                <span class="text-xl mb-1 group-hover:scale-110 transition-transform">📄</span>
+                <span class="text-xs font-bold text-slate-800">下載名冊 TXT</span>
+                <span class="text-[10px] text-slate-400">純文字檔備份</span>
+              </button>
+
+              <button onclick="copyRosterToClipboard()" class="p-2.5 bg-white border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/40 rounded-xl flex flex-col items-center justify-center text-center transition group shadow-2xs">
+                <span class="text-xl mb-1 group-hover:scale-110 transition-transform">📋</span>
+                <span class="text-xs font-bold text-slate-800">一鍵複製文字</span>
+                <span class="text-[10px] text-slate-400">直接貼入 Word/Line</span>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-semibold text-slate-700">目前學生名冊文字預覽：</label>
+              <span class="text-[11px] text-slate-400" id="exportPreviewCount">共 21 位學生</span>
+            </div>
+            <textarea id="exportPreviewText" readonly rows="7" class="w-full font-mono text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 focus:outline-none"></textarea>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
+        <span class="text-xs text-slate-400" id="batchModalStatusText">五年十三班名冊</span>
+        <div class="flex items-center gap-2">
+          <button onclick="closeBatchModal()" class="px-4 py-2 text-xs sm:text-sm font-medium rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50">
+            關閉
+          </button>
+          <button id="batchApplyBtn" onclick="applyBatchImport()" class="px-4 py-2 text-xs sm:text-sm font-medium rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm transition">
+            確認匯入並套用至全班
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 系統操作指引與排位技巧 Modal -->
+  <div id="guideModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[90vh]">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <div>
+            <h3 class="text-base sm:text-lg font-bold text-slate-900">座位編修系統操作指引</h3>
+            <p class="text-[11px] text-slate-500">掌握排座、鎖定、名冊與多設備編修技巧</p>
+          </div>
+        </div>
+        <button onclick="closeGuideModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="mt-4 flex-1 overflow-y-auto space-y-4 pr-1 text-xs sm:text-sm text-slate-600">
+        <div class="p-3.5 bg-indigo-50/60 rounded-2xl border border-indigo-100">
+          <h4 class="font-bold text-indigo-900 text-xs sm:text-sm mb-1.5 flex items-center gap-1.5">
+            <span>🖱️</span> 拖曳調座與平板互換模式
+          </h4>
+          <p class="text-slate-600 leading-relaxed text-xs">
+            • <strong>電腦桌機</strong>：直接按住學生卡片拖曳（Drag & Drop）至其他座位即可快速交換。<br>
+            • <strong>平板/觸控設備</strong>：啟用「點選兩位互換模式」，先點選一位同學，再點選另一位同學即可輕鬆對調。
+          </p>
+        </div>
+
+        <div class="p-3.5 bg-amber-50/60 rounded-2xl border border-amber-100">
+          <h4 class="font-bold text-amber-900 text-xs sm:text-sm mb-1.5 flex items-center gap-1.5">
+            <span>🔒</span> 鎖定席位技巧 (學生鎖定 vs 空位鎖定)
+          </h4>
+          <p class="text-slate-600 leading-relaxed text-xs">
+            • <strong>鎖定學生</strong>：點選學生卡片右下角「鎖定」，後續隨機抽籤時該學生將保持固定不動。<br>
+            • <strong>鎖為空位</strong>：空席點選「🔒 鎖為空位」，抽籤與自動排位將完全避開該座位，專門保留通道或特定空位。
+          </p>
+        </div>
+
+        <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+          <h4 class="font-bold text-slate-800 text-xs sm:text-sm mb-1.5 flex items-center gap-1.5">
+            <span>📋</span> 名冊批次管理與匯入
+          </h4>
+          <p class="text-slate-600 leading-relaxed text-xs">
+            點擊「批次名冊」可直接複製 Excel 欄位貼上，每行一位學生（格式：座號 姓名 性別 備註需求），亦可一鍵匯出相容 Excel 之 UTF-8 CSV 檔。
+          </p>
+        </div>
+
+        <div class="p-3.5 bg-emerald-50/60 rounded-2xl border border-emerald-100">
+          <h4 class="font-bold text-emerald-900 text-xs sm:text-sm mb-1.5 flex items-center gap-1.5">
+            <span>🖨️</span> 列印與全螢幕展示
+          </h4>
+          <p class="text-slate-600 leading-relaxed text-xs">
+            按頂部「全螢幕」按鈕可全景投影至電子白板；點擊「列印」將自動隱藏工具列，輸出純淨正式之班級座次表。
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-slate-100 flex justify-end">
+        <button onclick="closeGuideModal()" class="px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 shadow-sm transition">
+          我知道了
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="studentEditModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100">
+      <h3 class="text-lg font-bold text-slate-900 mb-4" id="editModalTitle">編輯學生資料</h3>
+      <input type="hidden" id="editStudentId">
+      
+      <div class="space-y-3 text-xs sm:text-sm">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">座號</label>
+          <input type="number" id="editStudentNo" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">姓名</label>
+          <input type="text" id="editStudentName" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">生理性別</label>
+          <div class="flex gap-4">
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="editGender" value="M" id="genderM" class="text-indigo-600">
+              <span>男生 (👦)</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="editGender" value="F" id="genderF" class="text-indigo-600">
+              <span>女生 (👧)</span>
+            </label>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">備註需求 (如近視、身高、小組長)</label>
+          <input type="text" id="editStudentTag" placeholder="如：視力需前座、易分心" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+        </div>
+      </div>
+
+      <div class="mt-6 flex items-center justify-between">
+        <button onclick="removeCurrentStudent()" class="text-red-500 hover:text-red-700 text-xs font-medium">刪除此學生</button>
+        <div class="flex items-center gap-2">
+          <button onclick="closeStudentEditModal()" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">取消</button>
+          <button onclick="saveStudentEdit()" class="px-4 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">儲存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <script>
+    // 系統版本設定 (每次發布/修改程式碼後遞增)
+    const APP_VERSION = "v1.0.4";
+
+    /**
+     * 產生預設男女學生名冊資料
+     * 依國小編號慣例：男生 1~9 號，女生 10~21 號
+     */
+    function generateDefaultStudents(boyCount = 9, girlCount = 12) {
+      const students = [];
+      let no = 1;
+      // 男生 9 位 (座號 1 ~ 9)
+      for (let i = 1; i <= boyCount; i++) {
+        students.push({
+          id: 1000 + no,
+          no: no,
+          name: `學生 ${no} 號`,
+          gender: 'M',
+          tag: '',
+          locked: false
+        });
+        no++;
+      }
+      // 女生 12 位 (座號 10 ~ 21)
+      for (let i = 1; i <= girlCount; i++) {
+        students.push({
+          id: 1000 + no,
+          no: no,
+          name: `學生 ${no} 號`,
+          gender: 'F',
+          tag: '',
+          locked: false
+        });
+        no++;
+      }
+      return students;
+    }
+
+    // 預設學生名冊：預設男 9 人、女 12 人 (共 21 人)
+    const DEFAULT_STUDENTS = generateDefaultStudents(9, 12);
+
+    // 全域狀態
+    let appState = {
+      className: "五年十三班",
+      classSize: 21,
+      students: [...DEFAULT_STUDENTS],
+      currentLayout: 'pairs', // 'pairs' | 'groups' | 'horseshoe' | 'arc'
+      seats: [], // 儲存當前佈局的所有席位配置
+      swapMode: false,
+      selectedSeatIdForSwap: null,
+      isTeacherPerspective: true // true: 黑板在上方; false: 黑板在下方
+    };
+
+    /**
+     * 第一種：雙人學伴列 (Pairs / Buddy Columns)
+     * 分為 左、中、右 3 大縱隊，每縱隊包含 4 組雙人夥伴桌 (2人連坐)
+     * 共 3 隊 × 4 排 × 2 人 = 24 席，特別強調隔壁學伴 (Buddy) 合作共學
+     */
+    function buildPairsSeats() {
+      const seats = [];
+      const sections = ['left', 'center', 'right'];
+      const sectionLabels = ['左側學伴隊', '中央學伴隊', '右側學伴隊'];
+
+      sections.forEach((sec, secIdx) => {
+        for (let r = 0; r < 4; r++) {
+          for (let p = 0; p < 2; p++) {
+            seats.push({
+              id: `pair_${sec}_${r}_${p}`,
+              label: `${sec === 'left' ? '左' : sec === 'center' ? '中' : '右'}${r + 1}-${p === 0 ? 'A' : 'B'}`,
+              section: sec,
+              sectionName: sectionLabels[secIdx],
+              pairRow: r,
+              side: p, // 0: 左座, 1: 右座
+              studentId: null,
+              locked: false
+            });
+          }
+        }
+      });
+      return seats;
+    }
+
+    /**
+     * 第二種：分組安排 (3至4人一組)
+     * 規劃 6 個小組島 (2行 x 3組)，每組 4 個位子面對面 (2x2)
+     */
+    function buildGroupsSeats() {
+      const seats = [];
+      const groupCount = 6;
+      const seatsPerGroup = 4;
+
+      for (let g = 0; g < groupCount; g++) {
+        const groupNum = g + 1;
+        for (let s = 0; s < seatsPerGroup; s++) {
+          seats.push({
+            id: `grp_${groupNum}_${s}`,
+            label: `組${groupNum}-${s + 1}`,
+            group: groupNum,
+            groupName: `第 ${groupNum} 學習小組`,
+            positionInGroup: s,
+            studentId: null,
+            locked: false
+          });
+        }
+      }
+      return seats;
+    }
+
+    /**
+     * 第三種：馬蹄 U 型互動環繞配置 (Horseshoe)
+     * 左翼 6 席 + 底列 9 席 + 右翼 6 席 = 恰好 21 席
+     */
+    function buildHorseshoeSeats() {
+      const seats = [];
+      
+      // 左翼 (面對黑板的左側，縱向排 6 席)
+      for (let i = 0; i < 6; i++) {
+        seats.push({
+          id: `horse_L_${i}`,
+          label: `左翼-${i + 1}`,
+          wing: 'left',
+          groupName: '左側互動翼',
+          order: i,
+          studentId: null,
+          locked: false
+        });
+      }
+
+      // 底列 (後方橫向排 9 席)
+      for (let i = 0; i < 9; i++) {
+        seats.push({
+          id: `horse_B_${i}`,
+          label: `底列-${i + 1}`,
+          wing: 'bottom',
+          groupName: '中央視野列',
+          order: i,
+          studentId: null,
+          locked: false
+        });
+      }
+
+      // 右翼 (面對黑板的右側，縱向排 6 席)
+      for (let i = 0; i < 6; i++) {
+        seats.push({
+          id: `horse_R_${i}`,
+          label: `右翼-${i + 1}`,
+          wing: 'right',
+          groupName: '右側互動翼',
+          order: i,
+          studentId: null,
+          locked: false
+        });
+      }
+
+      return seats;
+    }
+
+    /**
+     * 第四種：雙排同心弧形劇場 (Concentric Arc / Amphitheater)
+     * 專為多媒體、電子白板與公開發表設計：
+     * - 前排弧 (Front Arc)：9 席
+     * - 後排弧 (Back Arc)：12 席
+     * 恰好 9 + 12 = 21 席！全員聚焦黑板，前後錯落不擋視線
+     */
+    function buildArcSeats() {
+      const seats = [];
+      // 前排弧 (9席)
+      for (let i = 0; i < 9; i++) {
+        seats.push({
+          id: `arc_front_${i}`,
+          label: `前弧-${i + 1}`,
+          tier: 'front',
+          order: i,
+          groupName: '前排近景弧',
+          studentId: null,
+          locked: false
+        });
+      }
+      // 後排弧 (12席)
+      for (let i = 0; i < 12; i++) {
+        seats.push({
+          id: `arc_back_${i}`,
+          label: `後弧-${i + 1}`,
+          tier: 'back',
+          order: i,
+          groupName: '後排全景弧',
+          studentId: null,
+          locked: false
+        });
+      }
+      return seats;
+    }
+
+    function initializeApp() {
+      // 綁定版本號顯示
+      const versionEl = document.getElementById('appVersionBadge');
+      if (versionEl) {
+        versionEl.textContent = APP_VERSION;
+      }
+
+      // 預設若名冊未初始化，填入預設男 9 女 12 名冊
+      if (!appState.students || appState.students.length === 0) {
+        appState.students = generateDefaultStudents(9, 12);
+        appState.classSize = appState.students.length;
+      }
+
+      // 建立初始佈局席位 (初始自動將預設 21 位學生填入席位)
+      loadLayout(appState.currentLayout, true);
+      // 更新統計與 UI
+      updateStats();
+      renderRosterList();
+
+      // 設定列印日期
+      const printDateEl = document.getElementById('printDate');
+      if (printDateEl) {
+        const now = new Date();
+        printDateEl.textContent = `製表日期：${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+      }
+    }
+
+    /**
+     * 當 classSize 改變時，確保名單有對應數量的學生
+     */
+    function syncStudentsWithClassSize() {
+      const targetSize = appState.classSize;
+      const currentLen = appState.students.length;
+
+      if (targetSize > currentLen) {
+        for (let i = currentLen + 1; i <= targetSize; i++) {
+          const isBoy = i % 2 !== 0;
+          appState.students.push({
+            id: Date.now() + i,
+            no: i,
+            name: `學生 ${i} 號`,
+            gender: isBoy ? 'M' : 'F',
+            tag: '',
+            locked: false
+          });
+        }
+      } else if (targetSize < currentLen) {
+        // 保留前 targetSize 位
+        appState.students = appState.students.slice(0, targetSize);
+      }
+      document.getElementById('classSizeInput').value = appState.classSize;
+    }
+
+    function switchLayout(layoutType) {
+      if (appState.currentLayout === layoutType) return;
+      appState.currentLayout = layoutType;
+
+      // 切換按鈕高亮
+      document.querySelectorAll('.layout-tab-btn').forEach(btn => {
+        btn.classList.remove('bg-white', 'text-indigo-700', 'shadow-sm');
+        btn.classList.add('text-slate-600');
+      });
+
+      const btnMap = {
+        pairs: 'btnLayoutPairs',
+        groups: 'btnLayoutGroups',
+        horseshoe: 'btnLayoutHorseshoe',
+        arc: 'btnLayoutArc'
+      };
+
+      const activeBtn = document.getElementById(btnMap[layoutType]);
+      if (activeBtn) {
+        activeBtn.classList.remove('text-slate-600');
+        activeBtn.classList.add('bg-white', 'text-indigo-700', 'shadow-sm');
+      }
+
+      // 更新說明文案
+      const descEl = document.getElementById('currentLayoutDescription');
+      if (layoutType === 'pairs') {
+        descEl.textContent = '雙人學伴：3大縱隊共12組學伴桌（共24席），強調夥伴互助討論，既保有矩陣秩序又兼顧同儕共學。';
+      } else if (layoutType === 'groups') {
+        descEl.textContent = '小組島狀：規劃6大合作學習島，學生面對面討論，最適合專題探究與分組活動。';
+      } else if (layoutType === 'horseshoe') {
+        descEl.textContent = '馬蹄 U 型互動環繞：左6+底9+右6共21席，中央留出寬闊互動舞台，適於閱讀分享與生動發表！';
+      } else if (layoutType === 'arc') {
+        descEl.textContent = '雙排弧形劇場型：前弧9席、後弧12席（共21席），同心圓視線零死角，觀看黑板與電子白板最為舒適。';
+      }
+
+      loadLayout(layoutType, false);
+      showToast(`已切換為：${descEl.textContent.split('：')[0]}`, 'info');
+    }
+
+    /**
+     * 載入席位架構
+     */
+    function loadLayout(layoutType, initialAutoAssign = false) {
+      let previousAssignments = [];
+      if (!initialAutoAssign && appState.seats.length > 0) {
+        previousAssignments = appState.seats
+          .filter(s => s.studentId !== null)
+          .map(s => s.studentId);
+      }
+
+      if (layoutType === 'pairs') {
+        appState.seats = buildPairsSeats();
+      } else if (layoutType === 'groups') {
+        appState.seats = buildGroupsSeats();
+      } else if (layoutType === 'horseshoe') {
+        appState.seats = buildHorseshoeSeats();
+      } else if (layoutType === 'arc') {
+        appState.seats = buildArcSeats();
+      }
+
+      // 將學生分配到新座位
+      if (initialAutoAssign) {
+        appState.students.forEach((student, index) => {
+          if (index < appState.seats.length) {
+            appState.seats[index].studentId = student.id;
+          }
+        });
+      } else {
+        previousAssignments.forEach((stuId, index) => {
+          if (index < appState.seats.length && appState.students.some(s => s.id === stuId)) {
+            appState.seats[index].studentId = stuId;
+          }
+        });
+      }
+
+      renderSeatingGrid();
+      updateStats();
+    }
+
+    function renderSeatingGrid() {
+      const container = document.getElementById('seatingGridContainer');
+      container.innerHTML = '';
+
+      if (appState.currentLayout === 'pairs') {
+        renderPairsGrid(container);
+      } else if (appState.currentLayout === 'groups') {
+        renderGroupsGrid(container);
+      } else if (appState.currentLayout === 'horseshoe') {
+        renderHorseshoeGrid(container);
+      } else if (appState.currentLayout === 'arc') {
+        renderArcGrid(container);
+      }
+
+      applyPerspective();
+    }
+
+    /**
+     * 渲染 6 個小組 (每組 4 人面面相覷)
+     */
+    function renderGroupsGrid(container) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 w-full max-w-5xl justify-items-center';
+
+      // 6 組
+      for (let g = 1; g <= 6; g++) {
+        const groupCard = document.createElement('div');
+        groupCard.className = 'bg-slate-50/80 p-3.5 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center shadow-xs w-full max-w-[270px]';
+
+        // 小組標籤
+        groupCard.innerHTML = `
+          <div class="flex items-center justify-between w-full mb-2 px-1">
+            <span class="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">第 ${g} 組</span>
+            <span class="text-[11px] text-slate-400">合作討論島</span>
+          </div>
+        `;
+
+        // 2x2 面對面桌位排列
+        const desksGrid = document.createElement('div');
+        desksGrid.className = 'grid grid-cols-2 gap-2.5 w-full';
+
+        const groupSeats = appState.seats.filter(s => s.group === g);
+        groupSeats.forEach(seat => {
+          const seatEl = createSeatCardElement(seat, true);
+          desksGrid.appendChild(seatEl);
+        });
+
+        groupCard.appendChild(desksGrid);
+        wrapper.appendChild(groupCard);
+      }
+      container.appendChild(wrapper);
+    }
+
+    /**
+     * 渲染馬蹄 U 型互動環繞佈局 (Left 6, Bottom 9, Right 6)
+     */
+    function renderHorseshoeGrid(container) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex flex-col gap-6 w-full max-w-5xl items-center';
+
+      // 上半部：左翼、中央開闊展示區、右翼
+      const wingsAndStage = document.createElement('div');
+      wingsAndStage.className = 'w-full flex justify-between gap-4 items-stretch';
+
+      // 左翼 (6個座位垂直排列)
+      const leftCol = document.createElement('div');
+      leftCol.className = 'flex flex-col gap-2.5';
+      const leftSeats = appState.seats.filter(s => s.wing === 'left');
+      leftSeats.forEach(seat => {
+        leftCol.appendChild(createSeatCardElement(seat, false, 'w-36 sm:w-44'));
+      });
+
+      // 中央開闊活動舞台 (Central Stage / Discussion Space)
+      const centerStage = document.createElement('div');
+      centerStage.className = 'flex-1 mx-2 sm:mx-6 rounded-2xl border-2 border-dashed border-amber-200 bg-amber-50/40 flex flex-col items-center justify-center p-6 text-center shadow-inner';
+      centerStage.innerHTML = `
+        <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 mb-2">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <h4 class="text-sm font-bold text-amber-900 mb-1">班級互動與發表舞台</h4>
+        <p class="text-xs text-amber-700 max-w-xs leading-relaxed">全班視野無阻礙，全員平等參與發言與作品展示</p>
+      `;
+
+      // 右翼 (6個座位垂直排列)
+      const rightCol = document.createElement('div');
+      rightCol.className = 'flex flex-col gap-2.5';
+      const rightSeats = appState.seats.filter(s => s.wing === 'right');
+      rightSeats.forEach(seat => {
+        rightCol.appendChild(createSeatCardElement(seat, false, 'w-36 sm:w-44'));
+      });
+
+      wingsAndStage.appendChild(leftCol);
+      wingsAndStage.appendChild(centerStage);
+      wingsAndStage.appendChild(rightCol);
+      wrapper.appendChild(wingsAndStage);
+
+      // 下半部：底列 (9個座位橫向排列)
+      const bottomRow = document.createElement('div');
+      bottomRow.className = 'w-full flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 pt-3 border-t-2 border-slate-100';
+      const bottomSeats = appState.seats.filter(s => s.wing === 'bottom');
+      bottomSeats.forEach(seat => {
+        bottomRow.appendChild(createSeatCardElement(seat, false, 'w-24 sm:w-28'));
+      });
+
+      wrapper.appendChild(bottomRow);
+      container.appendChild(wrapper);
+    }
+
+    /**
+     * 渲染第四種：雙人同儕學伴列 (3縱隊，每隊4組雙人桌)
+     */
+    function renderPairsGrid(container) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 w-full max-w-5xl justify-items-center';
+
+      const sections = [
+        { id: 'left', label: '左側學伴縱隊' },
+        { id: 'center', label: '中央學伴縱隊' },
+        { id: 'right', label: '右側學伴縱隊' }
+      ];
+
+      sections.forEach(sec => {
+        const colDiv = document.createElement('div');
+        colDiv.className = 'flex flex-col gap-3 w-full max-w-[270px] bg-slate-50/70 p-3 rounded-2xl border border-slate-200/80';
+
+        // 縱隊標題
+        colDiv.innerHTML = `
+          <div class="text-center pb-1 border-b border-slate-200/60">
+            <span class="text-xs font-bold text-slate-700">${sec.label}</span>
+          </div>
+        `;
+
+        // 4 排雙人座 (每排2人連坐)
+        for (let r = 0; r < 4; r++) {
+          const pairRowDiv = document.createElement('div');
+          pairRowDiv.className = 'flex items-center gap-2 bg-white/80 p-1.5 rounded-xl border border-indigo-100 shadow-xs';
+
+          const seatA = appState.seats.find(s => s.section === sec.id && s.pairRow === r && s.side === 0);
+          const seatB = appState.seats.find(s => s.section === sec.id && s.pairRow === r && s.side === 1);
+
+          if (seatA) pairRowDiv.appendChild(createSeatCardElement(seatA, true));
+          if (seatB) pairRowDiv.appendChild(createSeatCardElement(seatB, true));
+
+          colDiv.appendChild(pairRowDiv);
+        }
+
+        wrapper.appendChild(colDiv);
+      });
+
+      container.appendChild(wrapper);
+    }
+
+    /**
+     * 渲染第五種：雙排弧形全景劇場型 (前排9席、後排12席 = 21席)
+     */
+    function renderArcGrid(container) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex flex-col gap-8 w-full max-w-5xl items-center py-2';
+
+      // 1. 前排近景弧 (9席)
+      const frontArea = document.createElement('div');
+      frontArea.className = 'flex flex-col items-center w-full';
+      frontArea.innerHTML = `
+        <div class="mb-2 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+          前排環視弧 (9席) · 視距清晰
+        </div>
+      `;
+      const frontRow = document.createElement('div');
+      frontRow.className = 'flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 max-w-3xl';
+      const frontSeats = appState.seats.filter(s => s.tier === 'front');
+      frontSeats.forEach(seat => {
+        frontRow.appendChild(createSeatCardElement(seat, false, 'w-24 sm:w-28'));
+      });
+      frontArea.appendChild(frontRow);
+      wrapper.appendChild(frontArea);
+
+      // 2. 後排全景弧 (12席)
+      const backArea = document.createElement('div');
+      backArea.className = 'flex flex-col items-center w-full pt-4 border-t border-slate-200/60';
+      backArea.innerHTML = `
+        <div class="mb-2 text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
+          後排全景弧 (12席) · 視野開闊
+        </div>
+      `;
+      const backRow = document.createElement('div');
+      backRow.className = 'flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 max-w-5xl';
+      const backSeats = appState.seats.filter(s => s.tier === 'back');
+      backSeats.forEach(seat => {
+        backRow.appendChild(createSeatCardElement(seat, false, 'w-24 sm:w-28'));
+      });
+      backArea.appendChild(backRow);
+      wrapper.appendChild(backArea);
+
+      container.appendChild(wrapper);
+    }
+
+    /**
+     * 建立座位 DOM 元素 (支援拖曳、點擊互換、鎖定、即時資料顯示)
+     */
+    function createSeatCardElement(seat, isCompact = false, customWidth = '') {
+      const student = appState.students.find(s => s.id === seat.studentId);
+      const isOccupied = !!student;
+      const isSelectedForSwap = appState.selectedSeatIdForSwap === seat.id;
+      const isLockedEmpty = !isOccupied && seat.locked;
+
+      const card = document.createElement('div');
+      card.id = `seat_card_${seat.id}`;
+      card.dataset.seatId = seat.id;
+      card.draggable = isOccupied;
+
+      // 基本寬高與樣式
+      const baseWidth = customWidth ? customWidth : (isCompact ? 'w-full' : 'w-28 sm:w-32');
+      let colorClasses = 'bg-white border-slate-200 text-slate-700 hover:border-slate-300';
+
+      if (isOccupied) {
+        if (student.gender === 'M') {
+          colorClasses = 'bg-blue-50/70 border-blue-200 text-blue-900 shadow-sm hover:border-blue-300';
+        } else {
+          colorClasses = 'bg-rose-50/70 border-rose-200 text-rose-900 shadow-sm hover:border-rose-300';
+        }
+      } else if (isLockedEmpty) {
+        // 鎖定空位之禁用樣式
+        colorClasses = 'bg-slate-100/90 border-slate-300 border-dashed text-slate-500 shadow-inner select-none opacity-90';
+      } else {
+        colorClasses = 'bg-slate-50/60 border-dashed border-slate-200 text-slate-400 hover:bg-slate-100/70';
+      }
+
+      if (isSelectedForSwap) {
+        colorClasses += ' swap-source ring-4 ring-blue-300';
+      }
+
+      card.className = `seat-card ${baseWidth} min-h-[68px] sm:min-h-[74px] p-2 rounded-xl border flex flex-col justify-between cursor-pointer relative ${colorClasses}`;
+
+      // 卡片內部內容
+      if (isOccupied) {
+        card.innerHTML = `
+          <div class="flex items-center justify-between w-full">
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${student.gender === 'M' ? 'bg-blue-200/80 text-blue-800' : 'bg-rose-200/80 text-rose-800'}">
+              #${student.no}
+            </span>
+            <div class="flex items-center gap-1">
+              ${seat.locked ? '<span class="text-[10px]" title="已鎖定此位，不隨機變動">🔒</span>' : ''}
+              <span class="text-xs">${student.gender === 'M' ? '👦' : '👧'}</span>
+            </div>
+          </div>
+          
+          <div class="text-center py-0.5">
+            <div class="text-xs sm:text-sm font-bold truncate tracking-wide">${student.name}</div>
+            ${student.tag ? `<span class="inline-block text-[10px] text-amber-700 bg-amber-100/90 px-1 rounded truncate max-w-full font-medium">${student.tag}</span>` : ''}
+          </div>
+
+          <div class="flex items-center justify-between text-[9px] text-slate-400 pt-0.5 border-t border-slate-200/50">
+            <span>${seat.label}</span>
+            <div class="flex items-center gap-1 no-print">
+              <button onclick="event.stopPropagation(); toggleSeatLock('${seat.id}')" title="鎖定/解鎖此席位" class="hover:text-slate-700">
+                ${seat.locked ? '解鎖' : '鎖定'}
+              </button>
+              <button onclick="event.stopPropagation(); unseatStudent('${seat.id}')" title="移回未排著名冊" class="text-red-400 hover:text-red-600">
+                ✕
+              </button>
+            </div>
+          </div>
+        `;
+      } else if (isLockedEmpty) {
+        // 鎖定空位展示
+        card.innerHTML = `
+          <div class="flex items-center justify-between w-full text-[10px]">
+            <span class="font-bold text-slate-500">${seat.label}</span>
+            <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold text-[9px] flex items-center gap-0.5">
+              🔒 鎖定空席
+            </span>
+          </div>
+          <div class="text-center py-1">
+            <div class="text-xs font-semibold text-slate-500 flex items-center justify-center gap-1">
+              <svg class="w-3.5 h-3.5 text-amber-600 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              不安排學生
+            </div>
+            <div class="text-[9px] text-slate-400">抽籤排位將跳過此位</div>
+          </div>
+          <div class="flex items-center justify-end text-[9px] pt-0.5 border-t border-slate-200 no-print">
+            <button onclick="event.stopPropagation(); toggleSeatLock('${seat.id}')" title="解除空席鎖定，恢復可排座狀態" class="text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-0.5">
+              🔓 解除鎖定
+            </button>
+          </div>
+        `;
+      } else {
+        // 一般可用空位展示
+        card.innerHTML = `
+          <div class="flex items-center justify-between w-full text-[10px] text-slate-400">
+            <span>${seat.label}</span>
+            <span>空位</span>
+          </div>
+          <div class="text-center py-1 text-xs text-slate-400 font-medium">
+            + 點擊安排
+          </div>
+          <div class="flex items-center justify-between text-[9px] text-slate-400 pt-0.5 border-t border-slate-200/50 no-print">
+            <span>可入座</span>
+            <button onclick="event.stopPropagation(); toggleSeatLock('${seat.id}')" title="將此位鎖定為空席，抽籤與自動排位時將不排入學生" class="text-slate-400 hover:text-amber-700 font-medium flex items-center gap-0.5">
+              🔒 鎖為空位
+            </button>
+          </div>
+        `;
+      }
+
+      // 點擊事件：用於換位 (Swap) 或開啟編輯
+      card.addEventListener('click', (e) => {
+        handleSeatClick(seat.id);
+      });
+
+      // 雙擊事件：開啟學生詳細資料編輯
+      card.addEventListener('dblclick', (e) => {
+        if (seat.studentId) {
+          openStudentEditModal(seat.studentId);
+        }
+      });
+
+      // HTML5 拖曳事件處理
+      card.addEventListener('dragstart', (e) => {
+        if (!seat.studentId) {
+          e.preventDefault();
+          return;
+        }
+        card.classList.add('dragging');
+        e.dataTransfer.setData('text/plain', JSON.stringify({
+          sourceType: 'seat',
+          seatId: seat.id,
+          studentId: seat.studentId
+        }));
+      });
+
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+      });
+
+      card.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        card.classList.add('drop-hover');
+      });
+
+      card.addEventListener('dragleave', () => {
+        card.classList.remove('drop-hover');
+      });
+
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.classList.remove('drop-hover');
+        const rawData = e.dataTransfer.getData('text/plain');
+        if (!rawData) return;
+
+        try {
+          const payload = JSON.parse(rawData);
+          handleDropOnSeat(seat.id, payload);
+        } catch (err) {
+          console.error("Drop error", err);
+        }
+      });
+
+      return card;
+    }
+
+    function handleSeatClick(seatId) {
+      const seat = appState.seats.find(s => s.id === seatId);
+      if (!seat) return;
+
+      // 若該位已被鎖定為空席，禁止安排
+      if (seat.locked && !seat.studentId) {
+        showToast(`【${seat.label}】已鎖定為空席（不安排學生）。如需排位請先點擊「解除鎖定」`, 'info');
+        return;
+      }
+
+      // 如果當前處於「點選兩位互換模式」或使用者先點擊了一個座位
+      if (appState.swapMode || appState.selectedSeatIdForSwap !== null) {
+        if (appState.selectedSeatIdForSwap === null) {
+          // 選定第一個要交換的位置
+          appState.selectedSeatIdForSwap = seatId;
+          renderSeatingGrid();
+          showToast(`已選取【${seat.label}】，請點選第二個欲交換之座位`, 'info');
+        } else if (appState.selectedSeatIdForSwap === seatId) {
+          // 再次點擊自己，取消選取
+          appState.selectedSeatIdForSwap = null;
+          renderSeatingGrid();
+          showToast('已取消選取', 'info');
+        } else {
+          // 執行兩個座位的互換
+          swapTwoSeats(appState.selectedSeatIdForSwap, seatId);
+          appState.selectedSeatIdForSwap = null;
+          renderSeatingGrid();
+          updateStats();
+        }
+      } else {
+        // 一般模式下，點擊未入座的空位，若名冊有名單則提示入座
+        if (!seat.studentId) {
+          const unassigned = getUnassignedStudents();
+          if (unassigned.length > 0) {
+            seat.studentId = unassigned[0].id;
+            renderSeatingGrid();
+            updateStats();
+            showToast(`已安排【${unassigned[0].name}】進入此座位`, 'success');
+          } else {
+            showToast('所有學生皆已入座', 'info');
+          }
+        } else {
+          // 點擊有學生的座位，提示可拖曳或啟用互換
+          appState.selectedSeatIdForSwap = seatId;
+          renderSeatingGrid();
+          showToast(`已選取 ${seat.label}，點擊另一座位即可互換，或再次點擊取消`, 'info');
+        }
+      }
+    }
+
+    /**
+     * 交換兩個座位上的學生
+     */
+    function swapTwoSeats(seatIdA, seatIdB) {
+      const seatA = appState.seats.find(s => s.id === seatIdA);
+      const seatB = appState.seats.find(s => s.id === seatIdB);
+      if (!seatA || !seatB) return;
+
+      if (seatA.locked || seatB.locked) {
+        showToast('無法交換：包含已鎖定之席位，請先解除鎖定', 'error');
+        return;
+      }
+
+      const tempStudent = seatA.studentId;
+      seatA.studentId = seatB.studentId;
+      seatB.studentId = tempStudent;
+
+      showToast(`成功互換【${seatA.label}】與【${seatB.label}】`, 'success');
+    }
+
+    /**
+     * 處理拖放落地
+     */
+    function handleDropOnSeat(targetSeatId, payload) {
+      const targetSeat = appState.seats.find(s => s.id === targetSeatId);
+      if (!targetSeat) return;
+
+      if (targetSeat.locked && !targetSeat.studentId) {
+        showToast(`【${targetSeat.label}】已鎖定為空席，不可排入學生！若要使用請先解除鎖定。`, 'error');
+        return;
+      }
+
+      if (payload.sourceType === 'seat') {
+        // 從另一個座位拖過來
+        if (payload.seatId === targetSeatId) return;
+        swapTwoSeats(payload.seatId, targetSeatId);
+        renderSeatingGrid();
+        updateStats();
+      } else if (payload.sourceType === 'roster') {
+        // 從學生清單抽屜拖入
+        const studentId = payload.studentId;
+        // 先清除該學生原本可能所在的席位
+        const existingSeat = appState.seats.find(s => s.studentId === studentId);
+        if (existingSeat) {
+          existingSeat.studentId = null;
+        }
+
+        // 放入目標席位 (若目標席位原本有人，則該學生變為未入座)
+        targetSeat.studentId = studentId;
+        renderSeatingGrid();
+        renderRosterList();
+        updateStats();
+        showToast(`已將學生安排至【${targetSeat.label}】`, 'success');
+      }
+    }
+
+    function toggleSeatLock(seatId) {
+      const seat = appState.seats.find(s => s.id === seatId);
+      if (seat) {
+        seat.locked = !seat.locked;
+        renderSeatingGrid();
+        updateStats();
+        if (!seat.studentId) {
+          showToast(seat.locked ? `已鎖定【${seat.label}】為空席，自動排座將跳過此位` : `已解除【${seat.label}】空席鎖定，恢復可排位狀態`, 'info');
+        } else {
+          showToast(seat.locked ? `已鎖定【${seat.label}】學生` : `已解除【${seat.label}】鎖定`, 'info');
+        }
+      }
+    }
+
+    function unseatStudent(seatId) {
+      const seat = appState.seats.find(s => s.id === seatId);
+      if (seat) {
+        seat.studentId = null;
+        renderSeatingGrid();
+        renderRosterList();
+        updateStats();
+        showToast(`已將該座位置為空位`, 'info');
+      }
+    }
+
+    function clearAllSeats() {
+      // 保留鎖定座位，其餘清空
+      let clearedCount = 0;
+      appState.seats.forEach(seat => {
+        if (!seat.locked && seat.studentId !== null) {
+          seat.studentId = null;
+          clearedCount++;
+        }
+      });
+      renderSeatingGrid();
+      renderRosterList();
+      updateStats();
+      showToast(`已重置清空 ${clearedCount} 個非鎖定座位`, 'info');
+    }
+
+    /**
+     * 智慧隨機排座演算法
+     * @param {'random' | 'gender' | 'order'} mode 
+     */
+    function autoAssignSeats(mode = 'random') {
+      if (appState.students.length === 0) {
+        showToast('名冊尚無學生，請先點擊「批次名冊」匯入學生', 'info');
+        return;
+      }
+
+      // 找出所有需要被安排的學生（排除鎖定座位上已固定的人）
+      const lockedStudentIds = new Set(
+        appState.seats.filter(s => s.locked && s.studentId !== null).map(s => s.studentId)
+      );
+
+      // 可用的空位 (非鎖定席位)
+      const availableSeats = appState.seats.filter(s => !s.locked);
+      // 清空這些可用席位上的學生
+      availableSeats.forEach(s => s.studentId = null);
+
+      // 準備要安置的學生陣列
+      let pool = appState.students.filter(stu => !lockedStudentIds.has(stu.id));
+
+      if (mode === 'random') {
+        // 洗牌 (Fisher-Yates Shuffle)
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+      } else if (mode === 'order') {
+        // 依座號由小到大排序
+        pool.sort((a, b) => a.no - b.no);
+      } else if (mode === 'gender') {
+        // 男女交錯排法
+        const boys = pool.filter(s => s.gender === 'M');
+        const girls = pool.filter(s => s.gender === 'F');
+        // 洗牌後交錯
+        shuffleArray(boys);
+        shuffleArray(girls);
+        
+        const mixed = [];
+        const maxLen = Math.max(boys.length, girls.length);
+        for (let i = 0; i < maxLen; i++) {
+          if (i < boys.length) mixed.push(boys[i]);
+          if (i < girls.length) mixed.push(girls[i]);
+        }
+        pool = mixed;
+      }
+
+      // 填入席位
+      pool.forEach((student, idx) => {
+        if (idx < availableSeats.length) {
+          availableSeats[idx].studentId = student.id;
+        }
+      });
+
+      renderSeatingGrid();
+      renderRosterList();
+      updateStats();
+
+      const modeNames = { random: '全班隨機抽籤', gender: '男女交錯平衡', order: '座號循序' };
+      showToast(`已完成【${modeNames[mode]}】座位分配！`, 'success');
+    }
+
+    function shuffleArray(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+    }
+
+    function getUnassignedStudents() {
+      const assignedIds = new Set(appState.seats.map(s => s.studentId).filter(Boolean));
+      return appState.students.filter(s => !assignedIds.has(s.id));
+    }
+
+    function updateStats() {
+      const boyCount = appState.students.filter(s => s.gender === 'M').length;
+      const girlCount = appState.students.filter(s => s.gender === 'F').length;
+      const totalCount = appState.students.length;
+      const assignedCount = appState.seats.filter(s => s.studentId !== null).length;
+      const lockedEmptyCount = appState.seats.filter(s => s.locked && s.studentId === null).length;
+      const unseatedCount = getUnassignedStudents().length;
+
+      // 更新男女輸入框數值與總人數標籤
+      const boyInput = document.getElementById('boyCountInput');
+      if (boyInput) boyInput.value = boyCount;
+
+      const girlInput = document.getElementById('girlCountInput');
+      if (girlInput) girlInput.value = girlCount;
+
+      const totalDisplay = document.getElementById('totalClassCountDisplay');
+      if (totalDisplay) totalDisplay.textContent = totalCount;
+
+      document.getElementById('assignedCount').textContent = assignedCount;
+      document.getElementById('totalSeatsCount').textContent = appState.seats.length;
+      document.getElementById('unseatedCountBadge').textContent = unseatedCount;
+      document.getElementById('rosterTotalBadge').textContent = `${totalCount}人`;
+      appState.classSize = totalCount;
+
+      // 更新鎖定空席徽章
+      const lockedBadge = document.getElementById('lockedEmptyBadge');
+      const lockedCountEl = document.getElementById('lockedEmptyCount');
+      if (lockedBadge && lockedCountEl) {
+        lockedCountEl.textContent = lockedEmptyCount;
+        if (lockedEmptyCount > 0) {
+          lockedBadge.classList.remove('hidden');
+        } else {
+          lockedBadge.classList.add('hidden');
+        }
+      }
+    }
+
+    function renderRosterList() {
+      const container = document.getElementById('rosterListContainer');
+      container.innerHTML = '';
+
+      if (appState.students.length === 0) {
+        container.innerHTML = `
+          <div class="flex flex-col items-center justify-center py-12 text-slate-400 text-center">
+            <svg class="w-10 h-10 mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            <p class="text-xs font-medium">目前名冊無學生資料</p>
+            <p class="text-[11px] text-slate-400 mt-1">請點擊下方「批次管理」快速匯入或在上方個別新增</p>
+          </div>
+        `;
+        return;
+      }
+
+      const assignedMap = new Map();
+      appState.seats.forEach(s => {
+        if (s.studentId) assignedMap.set(s.studentId, s.label);
+      });
+
+      appState.students.forEach(student => {
+        const isAssigned = assignedMap.has(student.id);
+        const seatLabel = assignedMap.get(student.id);
+
+        const item = document.createElement('div');
+        item.draggable = true;
+        item.className = `p-2.5 rounded-xl border flex items-center justify-between transition cursor-grab active:cursor-grabbing ${
+          isAssigned ? 'bg-slate-50 border-slate-200 opacity-90' : 'bg-amber-50 border-amber-200 ring-2 ring-amber-100'
+        }`;
+
+        item.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${student.gender === 'M' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'}">
+              ${student.no}
+            </span>
+            <div>
+              <div class="text-xs sm:text-sm font-bold text-slate-800 flex items-center gap-1">
+                <span>${student.name}</span>
+                <span class="text-[10px] text-slate-400">(${student.gender === 'M' ? '男' : '女'})</span>
+              </div>
+              <div class="text-[10px] text-slate-400">
+                ${isAssigned ? `<span class="text-emerald-600 font-medium">已入座：${seatLabel}</span>` : '<span class="text-amber-600 font-semibold">尚未排座</span>'}
+                ${student.tag ? ` · ${student.tag}` : ''}
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="openStudentEditModal(${student.id})" class="text-slate-400 hover:text-indigo-600 p-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+            </button>
+          </div>
+        `;
+
+        item.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', JSON.stringify({
+            sourceType: 'roster',
+            studentId: student.id
+          }));
+        });
+
+        container.appendChild(item);
+      });
+    }
+
+    /**
+     * 調整男生或女生的人數 (+1 / -1)
+     * @param {'M' | 'F'} gender 
+     * @param {number} delta 
+     */
+    function adjustGenderCount(gender, delta) {
+      const currentCount = appState.students.filter(s => s.gender === gender).length;
+      const newCount = Math.max(0, Math.min(50, currentCount + delta));
+      if (newCount === currentCount) return;
+      updateGenderCount(gender, newCount);
+    }
+
+    /**
+     * 手動輸入男生或女生的人數
+     * @param {'M' | 'F'} gender 
+     * @param {string|number} val 
+     */
+    function updateGenderCountManual(gender, val) {
+      const parsed = parseInt(val, 10);
+      if (isNaN(parsed) || parsed < 0 || parsed > 50) {
+        updateStats();
+        return;
+      }
+      updateGenderCount(gender, parsed);
+    }
+
+    /**
+     * 核心邏輯：動態增減指定性別學生，並聯動更新全班總人數與席位
+     * @param {'M' | 'F'} gender 
+     * @param {number} targetCount 
+     */
+    function updateGenderCount(gender, targetCount) {
+      const isBoy = gender === 'M';
+      const genderName = isBoy ? '男生' : '女生';
+      const currentGenderStudents = appState.students.filter(s => s.gender === gender);
+      const diff = targetCount - currentGenderStudents.length;
+
+      if (diff > 0) {
+        // 新增學生
+        for (let i = 0; i < diff; i++) {
+          const nextNo = appState.students.length > 0 ? Math.max(...appState.students.map(s => s.no)) + 1 : 1;
+          appState.students.push({
+            id: Date.now() + Math.floor(Math.random() * 10000) + i,
+            no: nextNo,
+            name: `學生 ${nextNo} 號`,
+            gender: gender,
+            tag: '',
+            locked: false
+          });
+        }
+        showToast(`已增加${genderName} ${diff} 人，全班現為 ${appState.students.length} 人`, 'info');
+      } else if (diff < 0) {
+        // 減少學生
+        const removeCount = Math.abs(diff);
+        const assignedIds = new Set(appState.seats.map(s => s.studentId).filter(Boolean));
+
+        for (let i = 0; i < removeCount; i++) {
+          const genderList = appState.students.filter(s => s.gender === gender);
+          if (genderList.length === 0) break;
+
+          // 優先移除未入座的學生；若皆已入座則從最後一位移除
+          let toRemove = genderList.slice().reverse().find(s => !assignedIds.has(s.id));
+          if (!toRemove) {
+            toRemove = genderList[genderList.length - 1];
+          }
+
+          // 清理可能佔用的席位
+          appState.seats.forEach(seat => {
+            if (seat.studentId === toRemove.id) {
+              seat.studentId = null;
+            }
+          });
+
+          // 自名冊中移除
+          appState.students = appState.students.filter(s => s.id !== toRemove.id);
+        }
+        showToast(`已減少${genderName} ${removeCount} 人，全班現為 ${appState.students.length} 人`, 'info');
+      }
+
+      appState.classSize = appState.students.length;
+      renderSeatingGrid();
+      renderRosterList();
+      updateStats();
+    }
+
+    function openRosterDrawer() {
+      document.getElementById('rosterDrawer').classList.remove('translate-x-full');
+      document.getElementById('rosterDrawerBackdrop').classList.remove('hidden');
+    }
+
+    function closeRosterDrawer() {
+      document.getElementById('rosterDrawer').classList.add('translate-x-full');
+      document.getElementById('rosterDrawerBackdrop').classList.add('hidden');
+    }
+
+    function addNewStudentFromDrawer() {
+      const nameInput = document.getElementById('newStudentNameInput');
+      const genderSelect = document.getElementById('newStudentGender');
+      const name = nameInput.value.trim();
+      if (!name) return;
+
+      const nextNo = appState.students.length > 0 ? Math.max(...appState.students.map(s => s.no)) + 1 : 1;
+      const newStu = {
+        id: Date.now(),
+        no: nextNo,
+        name: name,
+        gender: genderSelect.value,
+        tag: '',
+        locked: false
+      };
+
+      appState.students.push(newStu);
+      appState.classSize = appState.students.length;
+      nameInput.value = '';
+
+      renderRosterList();
+      updateStats();
+      showToast(`已新增學生：${name}`, 'success');
+    }
+
+    function togglePerspective() {
+      appState.isTeacherPerspective = !appState.isTeacherPerspective;
+      applyPerspective();
+
+      const label = document.getElementById('perspectiveLabel');
+      if (appState.isTeacherPerspective) {
+        label.textContent = '講台在上方 (學生視角)';
+        showToast('已切換為：講台在上方 (學生視角)', 'info');
+      } else {
+        label.textContent = '講台在下方 (老師視角)';
+        showToast('已切換為：講台在下方 (老師視角)', 'info');
+      }
+    }
+
+    function applyPerspective() {
+      const container = document.querySelector('.canvas-container');
+      const podium = document.getElementById('podiumArea');
+      if (!podium || !container) return;
+
+      if (!appState.isTeacherPerspective) {
+        // 老師視角：黑板/講台置於下方
+        container.appendChild(podium);
+      } else {
+        // 學生視角：黑板/講台置於上方
+        container.prepend(podium);
+      }
+    }
+
+    function editClassTitle() {
+      const current = appState.className;
+      const newTitle = prompt('請輸入班級或座次表名稱：', current);
+      if (newTitle && newTitle.trim()) {
+        appState.className = newTitle.trim();
+        document.getElementById('classTitleDisplay').textContent = appState.className;
+        document.getElementById('printClassTitle').textContent = `${appState.className} 座位表`;
+        showToast(`已更新標題為「${appState.className}」`, 'success');
+      }
+    }
+
+    function toggleSwapMode() {
+      appState.swapMode = !appState.swapMode;
+      const btn = document.getElementById('swapModeBtn');
+      const dot = document.getElementById('swapIndicator');
+
+      if (appState.swapMode) {
+        btn.classList.add('bg-blue-50', 'border-blue-400', 'text-blue-700');
+        dot.classList.remove('bg-slate-400');
+        dot.classList.add('bg-blue-600', 'animate-ping');
+        showToast('互換模式已開啟：請依序點擊兩個欲互換的座位', 'info');
+      } else {
+        btn.classList.remove('bg-blue-50', 'border-blue-400', 'text-blue-700');
+        dot.classList.remove('bg-blue-600', 'animate-ping');
+        dot.classList.add('bg-slate-400');
+        appState.selectedSeatIdForSwap = null;
+        renderSeatingGrid();
+        showToast('已退出互換模式', 'info');
+      }
+    }
+
+    function openStudentEditModal(studentId) {
+      const stu = appState.students.find(s => s.id === studentId);
+      if (!stu) return;
+
+      document.getElementById('editStudentId').value = stu.id;
+      document.getElementById('editStudentNo').value = stu.no;
+      document.getElementById('editStudentName').value = stu.name;
+      document.getElementById('editStudentTag').value = stu.tag || '';
+
+      if (stu.gender === 'M') {
+        document.getElementById('genderM').checked = true;
+      } else {
+        document.getElementById('genderF').checked = true;
+      }
+
+      document.getElementById('studentEditModal').classList.remove('hidden');
+    }
+
+    function closeStudentEditModal() {
+      document.getElementById('studentEditModal').classList.add('hidden');
+    }
+
+    function saveStudentEdit() {
+      const id = parseInt(document.getElementById('editStudentId').value, 10);
+      const stu = appState.students.find(s => s.id === id);
+      if (!stu) return;
+
+      const no = parseInt(document.getElementById('editStudentNo').value, 10) || stu.no;
+      const name = document.getElementById('editStudentName').value.trim() || stu.name;
+      const gender = document.querySelector('input[name="editGender"]:checked').value;
+      const tag = document.getElementById('editStudentTag').value.trim();
+
+      stu.no = no;
+      stu.name = name;
+      stu.gender = gender;
+      stu.tag = tag;
+
+      closeStudentEditModal();
+      renderSeatingGrid();
+      renderRosterList();
+      updateStats();
+      showToast(`已儲存【${name}】的資料`, 'success');
+    }
+
+    function removeCurrentStudent() {
+      const id = parseInt(document.getElementById('editStudentId').value, 10);
+      appState.students = appState.students.filter(s => s.id !== id);
+      // 清理席位
+      appState.seats.forEach(s => {
+        if (s.studentId === id) s.studentId = null;
+      });
+      appState.classSize = appState.students.length;
+
+      closeStudentEditModal();
+      renderSeatingGrid();
+      renderRosterList();
+      updateStats();
+      showToast('已刪除該名學生', 'info');
+    }
+
+    /**
+     * 開啟批次管理中心 (匯入 / 匯出)
+     * @param {'import' | 'export'} activeTab 
+     */
+    function openBatchModal(activeTab = 'import') {
+      populateCurrentStudentsToImportText();
+      updateExportPreviewText();
+      switchBatchTab(activeTab);
+      document.getElementById('batchModalStatusText').textContent = `${appState.className} · 全班共 ${appState.students.length} 人`;
+      document.getElementById('batchModal').classList.remove('hidden');
+    }
+
+    function closeBatchModal() {
+      document.getElementById('batchModal').classList.add('hidden');
+    }
+
+    /**
+     * 切換全螢幕檢視模式
+     */
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().then(() => {
+          showToast('已進入全螢幕檢視模式 (可按 Esc 退出)', 'info');
+        }).catch(err => {
+          showToast('無法進入全螢幕模式：' + err.message, 'error');
+        });
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().then(() => {
+            showToast('已退出全螢幕檢視', 'info');
+          });
+        }
+      }
+    }
+
+    // 監聽全螢幕狀態切換以更新圖示樣式
+    document.addEventListener('fullscreenchange', () => {
+      const fsIcon = document.getElementById('fullscreenIcon');
+      if (!fsIcon) return;
+      if (document.fullscreenElement) {
+        fsIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>';
+      } else {
+        fsIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>';
+      }
+    });
+
+    /**
+     * 開啟與關閉操作指引 Modal
+     */
+    function openGuideModal() {
+      document.getElementById('guideModal').classList.remove('hidden');
+    }
+
+    function closeGuideModal() {
+      document.getElementById('guideModal').classList.add('hidden');
+    }
+
+    /**
+     * 切換批次中心的分頁 (匯入 vs 匯出)
+     */
+    function switchBatchTab(tab) {
+      const tabBtnImport = document.getElementById('tabBtnImport');
+      const tabBtnExport = document.getElementById('tabBtnExport');
+      const contentImport = document.getElementById('tabContentImport');
+      const contentExport = document.getElementById('tabContentExport');
+      const applyBtn = document.getElementById('batchApplyBtn');
+
+      if (tab === 'import') {
+        tabBtnImport.className = 'flex-1 py-1.5 text-xs sm:text-sm font-semibold rounded-lg bg-white text-indigo-700 shadow-xs transition flex items-center justify-center gap-1.5';
+        tabBtnExport.className = 'flex-1 py-1.5 text-xs sm:text-sm font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center justify-center gap-1.5';
+        contentImport.classList.remove('hidden');
+        contentExport.classList.add('hidden');
+        applyBtn.classList.remove('hidden');
+      } else {
+        tabBtnExport.className = 'flex-1 py-1.5 text-xs sm:text-sm font-semibold rounded-lg bg-white text-indigo-700 shadow-xs transition flex items-center justify-center gap-1.5';
+        tabBtnImport.className = 'flex-1 py-1.5 text-xs sm:text-sm font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center justify-center gap-1.5';
+        contentExport.classList.remove('hidden');
+        contentImport.classList.add('hidden');
+        applyBtn.classList.add('hidden');
+        updateExportPreviewText();
+      }
+    }
+
+    /**
+     * 載入當前學生名單至文字輸入框
+     */
+    function populateCurrentStudentsToImportText() {
+      const lines = appState.students.map(s => `${s.no} ${s.name} ${s.gender === 'M' ? '男' : '女'}${s.tag ? ' ' + s.tag : ''}`.trim());
+      document.getElementById('batchInputText').value = lines.join('\n');
+    }
+
+    /**
+     * 更新匯出預覽框的文字內容
+     */
+    function updateExportPreviewText() {
+      const lines = appState.students.map(s => `${s.no} ${s.name} ${s.gender === 'M' ? '男' : '女'}${s.tag ? ' [' + s.tag + ']' : ''}`.trim());
+      const previewEl = document.getElementById('exportPreviewText');
+      if (previewEl) {
+        previewEl.value = lines.join('\n');
+      }
+      const countEl = document.getElementById('exportPreviewCount');
+      if (countEl) {
+        countEl.textContent = `共 ${appState.students.length} 位學生`;
+      }
+    }
+
+    /**
+     * 下載 CSV 匯入標準範本
+     */
+    function downloadRosterTemplate() {
+      const templateContent = "\uFEFF座號,姓名,性別,備註需求\n1,林小明,男,近視需前排\n2,陳美玲,女,班長\n3,張宇豪,男,\n4,李佩珊,女,風紀股長\n5,黃俊傑,男,";
+      const blob = new Blob([templateContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `學生名冊匯入範本.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('已下載名冊 CSV 匯入範本', 'success');
+    }
+
+    /**
+     * 處理名冊檔案上傳 (.csv 或 .txt)
+     */
+    function handleRosterFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const content = e.target.result;
+        if (!content || !content.trim()) {
+          showToast('上傳檔案內容為空', 'error');
+          return;
+        }
+
+        // 去除可能的 BOM
+        let cleanText = content.replace(/^\uFEFF/, '').trim();
+        const lines = cleanText.split(/\r?\n/);
+        const parsedLines = [];
+
+        // 檢查首行是否為標題列 (含 "座號" 或 "姓名")
+        let startIndex = 0;
+        if (lines[0].includes('姓名') || lines[0].includes('座號')) {
+          startIndex = 1;
+        }
+
+        for (let i = startIndex; i < lines.length; i++) {
+          const raw = lines[i].trim();
+          if (!raw) continue;
+
+          // 支援逗號、Tab、空格分隔
+          let cols = [];
+          if (raw.includes(',')) {
+            cols = raw.split(',').map(s => s.replace(/^["']|["']$/g, '').trim());
+          } else if (raw.includes('\t')) {
+            cols = raw.split('\t').map(s => s.trim());
+          } else {
+            cols = raw.split(/\s+/).map(s => s.trim());
+          }
+
+          if (cols.length >= 2) {
+            let no = parseInt(cols[0], 10);
+            let name = cols[1];
+            let genderStr = cols[2] || '';
+            let tag = cols.slice(3).join(' ');
+
+            if (isNaN(no)) {
+              no = parsedLines.length + 1;
+              name = cols[0];
+              genderStr = cols[1] || '';
+              tag = cols.slice(2).join(' ');
+            }
+
+            const gender = (genderStr.includes('女') || genderStr.toUpperCase() === 'F') ? '女' : '男';
+            parsedLines.push(`${no} ${name} ${gender} ${tag}`.trim());
+          }
+        }
+
+        if (parsedLines.length > 0) {
+          document.getElementById('batchInputText').value = parsedLines.join('\n');
+          showToast(`已成功讀取檔案中 ${parsedLines.length} 位學生資料，請確認後按「確認匯入」套用`, 'success');
+        } else {
+          // 若無法解析多欄位，直接帶入純文字
+          document.getElementById('batchInputText').value = cleanText;
+          showToast('已載入檔案文字內容，請確認格式', 'info');
+        }
+
+        event.target.value = '';
+      };
+
+      reader.readAsText(file, 'utf-8');
+    }
+
+    /**
+     * 匯出純學生名冊 CSV (含 UTF-8 BOM，Excel 直接雙擊開啟不亂碼)
+     */
+    function exportRosterCSV() {
+      let csvContent = "\uFEFF座號,姓名,性別,備註需求\n";
+      appState.students.forEach(s => {
+        const gender = s.gender === 'M' ? '男' : '女';
+        csvContent += `"${s.no}","${s.name}","${gender}","${s.tag || ''}"\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${appState.className}_學生名冊.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('已成功匯出學生名冊 CSV (相容 Excel)', 'success');
+    }
+
+    /**
+     * 匯出純學生名冊純文字檔 (TXT)
+     */
+    function exportRosterTXT() {
+      let txtContent = `${appState.className} 學生名冊\n`;
+      txtContent += `全班人數：${appState.students.length} 人 (男 ${appState.students.filter(s=>s.gender==='M').length} / 女 ${appState.students.filter(s=>s.gender==='F').length})\n`;
+      txtContent += `------------------------------------\n`;
+      appState.students.forEach(s => {
+        const gender = s.gender === 'M' ? '男' : '女';
+        txtContent += `${s.no}\t${s.name}\t${gender}\t${s.tag || ''}\n`;
+      });
+
+      const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${appState.className}_學生名冊.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('已匯出學生名冊 TXT 文字檔', 'success');
+    }
+
+    /**
+     * 一鍵複製名冊文字至剪貼簿 (遵循 iFrame document.execCommand 規範)
+     */
+    function copyRosterToClipboard() {
+      const lines = appState.students.map(s => `${s.no} ${s.name} (${s.gender === 'M' ? '男' : '女'})${s.tag ? ' - ' + s.tag : ''}`.trim());
+      const fullText = `${appState.className} 學生名冊 (共${appState.students.length}人)：\n` + lines.join('\n');
+
+      const tempTextarea = document.createElement('textarea');
+      tempTextarea.value = fullText;
+      tempTextarea.style.position = 'fixed';
+      tempTextarea.style.left = '-9999px';
+      tempTextarea.style.top = '0';
+      document.body.appendChild(tempTextarea);
+      tempTextarea.select();
+
+      try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+          showToast(`已成功複製 ${appState.students.length} 位學生名冊至剪貼簿！`, 'success');
+        } else {
+          showToast('複製失敗，請手動複製預覽框內的文字', 'error');
+        }
+      } catch (err) {
+        showToast('無法存取剪貼簿，請手動選取文字複製', 'error');
+      } finally {
+        document.body.removeChild(tempTextarea);
+      }
+    }
+
+    function applyBatchImport() {
+      const text = document.getElementById('batchInputText').value.trim();
+      if (!text) {
+        showToast('請先輸入或上傳學生名單文字', 'error');
+        return;
+      }
+
+      const lines = text.split(/\r?\n/);
+      const newStudents = [];
+
+      lines.forEach((line, index) => {
+        const raw = line.trim();
+        if (!raw) return;
+
+        // 支援逗號、Tab 或 空白 分隔
+        let parts = [];
+        if (raw.includes(',')) {
+          parts = raw.split(',').map(s => s.replace(/^["']|["']$/g, '').trim());
+        } else if (raw.includes('\t')) {
+          parts = raw.split('\t').map(s => s.trim());
+        } else {
+          parts = raw.split(/\s+/).map(s => s.trim());
+        }
+
+        if (parts.length >= 2) {
+          let no = parseInt(parts[0], 10);
+          let name = parts[1];
+          let genderStr = parts[2] || '';
+          let tag = parts.slice(3).join(' ');
+
+          if (isNaN(no)) {
+            no = newStudents.length + 1;
+            name = parts[0];
+            genderStr = parts[1] || '';
+            tag = parts.slice(2).join(' ');
+          }
+
+          const gender = (genderStr.includes('女') || genderStr.toUpperCase() === 'F') ? 'F' : 'M';
+
+          newStudents.push({
+            id: Date.now() + index,
+            no: no,
+            name: name,
+            gender: gender,
+            tag: tag,
+            locked: false
+          });
+        }
+      });
+
+      if (newStudents.length > 0) {
+        appState.students = newStudents;
+        appState.classSize = newStudents.length;
+
+        // 重新依人數分配新佈局
+        loadLayout(appState.currentLayout, true);
+        closeBatchModal();
+        renderRosterList();
+        updateStats();
+        showToast(`成功匯入 ${newStudents.length} 位學生名冊！`, 'success');
+      } else {
+        showToast('未能辨識出有效學生資料，每行請至少包含「座號」與「姓名」', 'error');
+      }
+    }
+
+    function toggleExportMenu() {
+      const menu = document.getElementById('exportMenu');
+      menu.classList.toggle('hidden');
+    }
+
+    // 點擊其他地方關閉選單
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('exportMenu');
+      if (!menu.contains(e.target) && !e.target.closest('button[onclick="toggleExportMenu()"]')) {
+        menu.classList.add('hidden');
+      }
+    });
+
+    function exportCSV() {
+      let csvContent = "\uFEFF座號,姓名,生理性別,備註需求,目前座位\n";
+      const studentSeatMap = new Map();
+      appState.seats.forEach(s => {
+        if (s.studentId) studentSeatMap.set(s.studentId, s.label);
+      });
+
+      appState.students.forEach(s => {
+        const seat = studentSeatMap.get(s.id) || '未安排';
+        const gender = s.gender === 'M' ? '男' : '女';
+        csvContent += `"${s.no}","${s.name}","${gender}","${s.tag || ''}","${seat}"\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${appState.className}_座次名單.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('已匯出 CSV 座次表', 'success');
+    }
+
+    function exportJSON() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
+      const a = document.createElement('a');
+      a.href = dataStr;
+      a.download = `${appState.className}_排位資料備份.json`;
+      a.click();
+      showToast('已匯出完整資料備份 (JSON)', 'success');
+    }
+
+    function importJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (imported.students && imported.seats) {
+            appState = imported;
+            document.getElementById('classTitleDisplay').textContent = appState.className;
+            document.getElementById('printClassTitle').textContent = `${appState.className} 座位表`;
+            switchLayout(appState.currentLayout);
+            renderRosterList();
+            updateStats();
+            showToast('已成功還原班級排位資料！', 'success');
+          }
+        } catch (err) {
+          showToast('匯入檔案格式不正確', 'error');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      
+      let bg = 'bg-slate-800 text-white';
+      let icon = 'ℹ️';
+      if (type === 'success') {
+        bg = 'bg-emerald-600 text-white';
+        icon = '✅';
+      } else if (type === 'error') {
+        bg = 'bg-rose-600 text-white';
+        icon = '⚠️';
+      }
+
+      toast.className = `${bg} px-4 py-2.5 rounded-xl shadow-lg text-xs sm:text-sm font-medium flex items-center gap-2 transform transition-all duration-300 translate-y-4 opacity-0`;
+      toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+      container.appendChild(toast);
+
+      // 進場動畫
+      setTimeout(() => {
+        toast.classList.remove('translate-y-4', 'opacity-0');
+      }, 10);
+
+      // 自動消退
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    // 初始化啟動
+    window.addEventListener('DOMContentLoaded', initializeApp);
+  </script>
+</body>
+</html>
