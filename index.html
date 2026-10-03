@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>線上座位編修系統 - 五年十三班</title>
+  <title>線上座位編修系統</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Google Fonts Inter & Noto Sans TC -->
@@ -68,14 +68,13 @@
         </div>
         <div>
           <div class="flex items-center gap-2 flex-wrap">
-            <h1 class="text-base sm:text-lg font-bold text-slate-900" id="classTitleDisplay">五年十三班座位表</h1>
-            <button onclick="editClassTitle()" class="text-slate-400 hover:text-slate-600 transition" title="修改班級名稱">
+            <h1 class="text-base sm:text-lg font-bold text-slate-900" id="classTitleDisplay">線上座位編修系統</h1>
+            <button onclick="editClassTitle()" class="text-slate-400 hover:text-slate-600 transition" title="修改標題名稱">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
             </button>
             <!-- 版本控制編號徽章 -->
-            <span id="appVersionBadge" class="text-[10px] sm:text-[11px] font-semibold tracking-wide bg-indigo-50 text-indigo-600 border border-indigo-200/80 px-2 py-0.5 rounded-full select-none" title="版本號碼：後續每次更新累加">v1.0.4</span>
+            <span id="appVersionBadge" class="text-[10px] sm:text-[11px] font-semibold tracking-wide bg-indigo-50 text-indigo-600 border border-indigo-200/80 px-2 py-0.5 rounded-full select-none" title="版本號碼：後續每次更新累加">v1.0.5</span>
           </div>
-          <p class="text-xs text-slate-500 font-medium">線上座位編修系統</p>
         </div>
       </div>
 
@@ -157,7 +156,7 @@
       <div class="flex flex-wrap items-center justify-between gap-2">
         <!-- 座位格局緊緻切換器 -->
         <div class="flex items-center gap-1.5 flex-wrap">
-          <span class="text-xs font-bold text-slate-500 mr-0.5 whitespace-nowrap">格局：</span>
+          <span class="text-xs font-bold text-slate-500 mr-0.5 whitespace-nowrap">座位模式：</span>
           <div class="inline-flex p-0.5 bg-slate-100 rounded-lg flex-wrap gap-0.5">
             <button id="btnLayoutPairs" onclick="switchLayout('pairs')" class="layout-tab-btn px-2.5 py-1 text-xs font-semibold rounded-md transition bg-white text-indigo-700 shadow-2xs">
               ① 雙人學伴
@@ -166,10 +165,10 @@
               ② 小組島狀
             </button>
             <button id="btnLayoutHorseshoe" onclick="switchLayout('horseshoe')" class="layout-tab-btn px-2.5 py-1 text-xs font-medium rounded-md text-slate-600 hover:text-slate-900 transition">
-              ③ 馬蹄U型環繞
+              ③ U 型環繞
             </button>
             <button id="btnLayoutArc" onclick="switchLayout('arc')" class="layout-tab-btn px-2.5 py-1 text-xs font-medium rounded-md text-slate-600 hover:text-slate-900 transition">
-              ④ 雙排弧形劇場
+              ④ 雙排劇場
             </button>
           </div>
         </div>
@@ -559,7 +558,7 @@
 
   <script>
     // 系統版本設定 (每次發布/修改程式碼後遞增)
-    const APP_VERSION = "v1.0.4";
+    const APP_VERSION = "v1.0.5";
 
     /**
      * 產生預設男女學生名冊資料
@@ -600,7 +599,7 @@
 
     // 全域狀態
     let appState = {
-      className: "五年十三班",
+      className: "線上座位編修系統",
       classSize: 21,
       students: [...DEFAULT_STUDENTS],
       currentLayout: 'pairs', // 'pairs' | 'groups' | 'horseshoe' | 'arc'
@@ -833,9 +832,9 @@
       } else if (layoutType === 'groups') {
         descEl.textContent = '小組島狀：規劃6大合作學習島，學生面對面討論，最適合專題探究與分組活動。';
       } else if (layoutType === 'horseshoe') {
-        descEl.textContent = '馬蹄 U 型互動環繞：左6+底9+右6共21席，中央留出寬闊互動舞台，適於閱讀分享與生動發表！';
+        descEl.textContent = 'U 型環繞：左6+底9+右6共21席，中央留出寬闊互動舞台，適於閱讀分享與生動發表！';
       } else if (layoutType === 'arc') {
-        descEl.textContent = '雙排弧形劇場型：前弧9席、後弧12席（共21席），同心圓視線零死角，觀看黑板與電子白板最為舒適。';
+        descEl.textContent = '雙排劇場：前弧9席、後弧12席（共21席），同心圓視線零死角，觀看黑板與電子白板最為舒適。';
       }
 
       loadLayout(layoutType, false);
